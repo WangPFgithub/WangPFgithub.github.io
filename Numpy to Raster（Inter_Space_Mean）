@@ -1,0 +1,65 @@
+from osgeo import gdal
+import os
+import matplotlib.pyplot as plt
+import numpy as np
+
+
+data_path = 'D:\\test\\data_LCJ\\data'
+data_year = ['2015', '2016', '2017', '2018']
+data_year_out = ['2015_inter_space', '2016_inter_space', '2017_inter_space', '2018_inter_space']
+data_vari = ['LAI', 'ETp', 'RootDepth']
+# bound_tif = gdal.Open('D:\\test\\data_LCJ\\data\\out_put_boundary\\boundary.tif')
+bound_tif = gdal.Open('D:\\test\\data_LCJ\\data\\out_put_boundary\\ETp_2015001.tif')
+bound_arr = bound_tif.ReadAsArray()  # all data is 1
+# print(bound_arr.shape)  # shape is (1850,2525)
+
+# 保存为tif文件时需要的坐标信息，通过一个实例文件获取（ETp_2015001.tif）
+[cols, rows] = bound_arr.shape  # 行列信息
+band = bound_tif.GetRasterBand(1)  # 波段信息
+transform = bound_tif.GetGeoTransform()  # 地理坐标信息
+projection = bound_tif.GetProjection()  # 投影信息
+data_type = gdal.GDT_Float32  # 字段信息，参考链接： https://blog.sciencenet.cn/blog-3134052-1049412.html
+
+# 行列检验通过，所有数据均为(1850,2525)
+# for yaer in range(len(data_year)):
+#     for vari in range(len(data_vari)):
+#         input_path = data_path + '\\' + data_year[yaer] + '\\'+ data_vari[vari] + '\\'
+#         name_list = os.listdir(input_path)
+#         # print(name_list)
+#         for num in range(len(name_list)):
+#             tif_path = input_path + name_list[num]
+#             # print(tif_path)
+#             data_tif = gdal.Open(tif_path)
+#             data_arr = data_tif.ReadAsArray()
+#             print(data_arr.shape)
+
+# 空间插值测试,nan值修改为全图均值
+for yaer in range(len(data_year)):  # 循环遍历年份文件夹
+    for vari in range(len(data_vari)):  # 循环遍历变量文件夹
+        input_path = data_path + '\\' + data_year[yaer] + '\\'+ data_vari[vari] + '\\'
+        name_list = os.listdir(input_path)
+        for num in range(len(name_list)):  # 循环遍历数据
+            tif_path = input_path + name_list[num]
+            data_tif = gdal.Open(tif_path)
+            band = data_tif.GetRasterBand(1)
+            NoData = band.GetNoDataValue()  # 获取原始数据的NoData
+            # print(NoData)
+            data_arr_int = data_tif.ReadAsArray()  # 读取为数组
+            data_arr = data_arr_int.astype(np.float64)  # 此处似乎是不必要的设置，未测试删出之后的效果
+            data_arr[data_arr == NoData] = np.nan  # tif文件的NoData更改为np的nan值
+            data_arr_mean = np.nanmean(data_arr)  # 获取非空区域的均值
+            data_arr[np.isnan(data_arr)] = data_arr_mean  # NoData区域（np.nan）填充为非空区域均值
+            # plt.imshow(data_arr)
+            # plt.show()
+
+            # 输出tif
+            out_path = data_path + '\\' + data_year_out[yaer] + '\\' + data_vari[vari] + '\\'  # 输出文件夹位置
+            outFileName = out_path + name_list[num]  # 包含文件名的输出文件
+            driver = gdal.GetDriverByName("GTiff")  # 定义数据格式为GTiff
+            outdata = driver.Create(outFileName, rows, cols, 1, data_type)  # 设置输出格式（位置、行列数、波段、数组类型）
+            outdata.SetGeoTransform(transform)  # 定义坐标系统
+            outdata.SetProjection(projection)  # 定义投影系统
+            outband = outdata.GetRasterBand(1)  # 定义波段
+            outband.WriteArray(data_arr)  # 写入数据
+            outdata = None  # 写入完成，关闭文件
+print('输出完成')
